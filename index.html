@@ -1,13 +1,305 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mind Mapping App</title>
+    <title>マインドマップアプリ</title>
     <link rel="stylesheet" href="styles.css">
+    
+    <!-- React -->
+    <script src="https://unpkg.com/react@17/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js" crossorigin></script>
+    
+    <!-- React DnD とその依存関係 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/redux/4.1.0/redux.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/immutability-helper/3.1.1/immutability-helper.min.js"></script>
+    <script src="https://unpkg.com/dnd-core@14.0.0/dist/index.js"></script>
+    <script src="https://unpkg.com/react-dnd@14.0.0/dist/index.js"></script>
+    <script src="https://unpkg.com/react-dnd-html5-backend@14.0.0/dist/index.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script>
+        // グローバルに利用可能なオブジェクトを作成
+        window.ReactDnD = window.ReactDnD || {};
+        window.ReactDnDHTML5Backend = window.ReactDnDHTML5Backend || {};
+    </script>
 </head>
 <body>
     <div id="root"></div>
-    <script type="module" src="app.js"></script>
+    
+    <!-- 代替実装 -->
+    <script type="text/babel">
+        // React とその Hook
+        const React = window.React;
+        const { useState, useRef, useEffect } = React;
+        const ReactDOM = window.ReactDOM;
+
+        // 簡易 DnD 実装（React DnD が使えない場合の代替）
+        const SimpleDragContext = React.createContext();
+
+        function SimpleDragProvider({ children }) {
+            const [draggingNode, setDraggingNode] = useState(null);
+            const [offset, setOffset] = useState({ x: 0, y: 0 });
+            
+            const startDrag = (id, e, initialPos) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const offsetX = e.clientX - rect.left;
+                const offsetY = e.clientY - rect.top;
+                setOffset({ x: offsetX, y: offsetY });
+                setDraggingNode({ id, initialPos });
+            };
+            
+            const endDrag = (callback) => {
+                if (draggingNode) {
+                    callback(draggingNode);
+                    setDraggingNode(null);
+                }
+            };
+            
+            const handleMouseMove = (e, updatePosition) => {
+                if (draggingNode) {
+                    const x = e.clientX - offset.x;
+                    const y = e.clientY - offset.y;
+                    updatePosition(draggingNode.id, { x, y });
+                }
+            };
+            
+            return (
+                <SimpleDragContext.Provider value={{ draggingNode, startDrag, endDrag, handleMouseMove }}>
+                    {children}
+                </SimpleDragContext.Provider>
+            );
+        }
+
+        // ノード間の接続線コンポーネント
+        const Connection = ({ startPos, endPos }) => {
+            if (!startPos || !endPos) return null;
+            
+            return (
+                <svg style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    pointerEvents: 'none',
+                    zIndex: 1
+                }}>
+                    <line
+                        x1={startPos.x}
+                        y1={startPos.y}
+                        x2={endPos.x}
+                        y2={endPos.y}
+                        style={{ stroke: '#999', strokeWidth: 2 }}
+                    />
+                </svg>
+            );
+        };
+
+        const Node = ({ id, text, position, parentId, onPositionChange, getNodePosition, updateNodePosition }) => {
+            const nodeRef = useRef(null);
+            const dragContext = React.useContext(SimpleDragContext);
+            
+            useEffect(() => {
+                if (nodeRef.current) {
+                    onPositionChange(id, {
+                        x: position.x,
+                        y: position.y,
+                        width: nodeRef.current.offsetWidth,
+                        height: nodeRef.current.offsetHeight
+                    });
+                }
+            }, [position, id, onPositionChange]);
+
+            // 親ノードへの接続線を描画
+            const renderConnection = () => {
+                if (!parentId) return null;
+                
+                const parentPos = getNodePosition(parentId);
+                const currentPos = getNodePosition(id);
+                
+                if (parentPos && currentPos) {
+                    const startX = parentPos.x + parentPos.width / 2;
+                    const startY = parentPos.y + parentPos.height / 2;
+                    const endX = currentPos.x + currentPos.width / 2;
+                    const endY = currentPos.y + currentPos.height / 2;
+                    
+                    return (
+                        <Connection
+                            startPos={{ x: startX, y: startY }}
+                            endPos={{ x: endX, y: endY }}
+                        />
+                    );
+                }
+                
+                return null;
+            };
+
+            const isDragging = dragContext.draggingNode && dragContext.draggingNode.id === id;
+
+            return (
+                <>
+                    {renderConnection()}
+                    <div
+                        ref={nodeRef}
+                        className="node"
+                        style={{
+                            position: 'absolute',
+                            left: position.x,
+                            top: position.y,
+                            opacity: isDragging ? 0.5 : 1,
+                            cursor: 'grab'
+                        }}
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            dragContext.startDrag(id, e, position);
+                        }}
+                    >
+                        {text}
+                    </div>
+                </>
+            );
+        };
+
+        const MindMap = () => {
+            const canvasRef = useRef(null);
+            const [nodes, setNodes] = useState([
+                { id: 1, text: 'メインアイデア', position: { x: 400, y: 200 }, parentId: null },
+                { id: 2, text: 'サブアイデア 1', position: { x: 250, y: 300 }, parentId: 1 },
+                { id: 3, text: 'サブアイデア 2', position: { x: 550, y: 300 }, parentId: 1 },
+                { id: 4, text: 'サブアイデア 1-1', position: { x: 150, y: 400 }, parentId: 2 },
+                { id: 5, text: 'サブアイデア 2-1', position: { x: 450, y: 400 }, parentId: 3 },
+                { id: 6, text: 'サブアイデア 2-2', position: { x: 650, y: 400 }, parentId: 3 },
+            ]);
+            
+            const [nodePositions, setNodePositions] = useState({});
+            const [nextId, setNextId] = useState(7);
+            const dragContext = React.useContext(SimpleDragContext);
+
+            const handleNodePositionChange = (id, positionData) => {
+                setNodePositions(prev => ({
+                    ...prev,
+                    [id]: positionData
+                }));
+            };
+
+            const getNodePosition = (id) => {
+                return nodePositions[id];
+            };
+
+            const updateNodePosition = (id, newPosition) => {
+                setNodes(nodes.map(node => {
+                    if (node.id === id) {
+                        return { ...node, position: newPosition };
+                    }
+                    return node;
+                }));
+            };
+
+            const handleDragEnd = (draggedNode) => {
+                // 何もしない - マウスムーブですでに位置を更新している
+            };
+
+            const addNewNode = () => {
+                const rootNode = nodes.find(node => node.parentId === null);
+                if (!rootNode) return;
+                
+                const newNode = {
+                    id: nextId,
+                    text: `新しいアイデア ${nextId}`,
+                    position: { x: rootNode.position.x + 100, y: rootNode.position.y + 100 },
+                    parentId: rootNode.id
+                };
+                
+                setNodes([...nodes, newNode]);
+                setNextId(nextId + 1);
+            };
+
+            const exportToJson = () => {
+                const json = JSON.stringify(nodes, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'mindmap.json';
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            const importFromJson = (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const json = JSON.parse(e.target.result);
+                            setNodes(json);
+                            // 次のIDを設定（最大ID + 1）
+                            const maxId = Math.max(...json.map(node => node.id));
+                            setNextId(maxId + 1);
+                        } catch (error) {
+                            console.error('JSONの解析に失敗しました:', error);
+                            alert('ファイルの形式が正しくありません。');
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            };
+
+            useEffect(() => {
+                const handleMouseMove = (e) => {
+                    dragContext.handleMouseMove(e, updateNodePosition);
+                };
+                
+                const handleMouseUp = () => {
+                    dragContext.endDrag(handleDragEnd);
+                };
+                
+                window.addEventListener('mousemove', handleMouseMove);
+                window.addEventListener('mouseup', handleMouseUp);
+                
+                return () => {
+                    window.removeEventListener('mousemove', handleMouseMove);
+                    window.removeEventListener('mouseup', handleMouseUp);
+                };
+            }, [dragContext, nodes]);
+
+            return (
+                <div 
+                    ref={canvasRef}
+                    className="mind-map-canvas"
+                >
+                    <h1>マインドマップアプリ</h1>
+                    <div className="controls">
+                        <button onClick={addNewNode}>新しいノードを追加</button>
+                        <button onClick={exportToJson}>エクスポート</button>
+                        <input type="file" accept=".json" onChange={importFromJson} />
+                    </div>
+                    {nodes.map(node => (
+                        <Node 
+                            key={node.id} 
+                            id={node.id} 
+                            text={node.text} 
+                            position={node.position} 
+                            parentId={node.parentId}
+                            onPositionChange={handleNodePositionChange}
+                            getNodePosition={getNodePosition}
+                            updateNodePosition={updateNodePosition}
+                        />
+                    ))}
+                </div>
+            );
+        };
+
+        const App = () => (
+            <SimpleDragProvider>
+                <MindMap />
+            </SimpleDragProvider>
+        );
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
 </body>
 </html>
