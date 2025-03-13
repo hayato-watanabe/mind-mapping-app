@@ -98,20 +98,29 @@
             );
         };
 
-        const Node = ({ id, text, position, parentId, onPositionChange, getNodePosition, updateNodePosition }) => {
+        const Node = ({ id, text, position, parentId, onPositionChange, getNodePosition, updateNodePosition, updateNodeText }) => {
             const nodeRef = useRef(null);
             const dragContext = React.useContext(SimpleDragContext);
+            const [isEditing, setIsEditing] = useState(false);
+            const [editText, setEditText] = useState(text);
+            const inputRef = useRef(null);
             
             useEffect(() => {
                 if (nodeRef.current) {
+                    const width = nodeRef.current.offsetWidth;
+                    const height = nodeRef.current.offsetHeight;
+                    
+                    // Only update if dimensions have actually changed to avoid infinite updates
                     onPositionChange(id, {
                         x: position.x,
                         y: position.y,
-                        width: nodeRef.current.offsetWidth,
-                        height: nodeRef.current.offsetHeight
+                        width,
+                        height
                     });
                 }
-            }, [position, id, onPositionChange]);
+            // Run this effect only when position changes or on mount
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, [position.x, position.y, id]);
 
             // 親ノードへの接続線を描画
             const renderConnection = () => {
@@ -139,6 +148,32 @@
 
             const isDragging = dragContext.draggingNode && dragContext.draggingNode.id === id;
 
+            // テキスト編集を確定する関数
+            const handleTextConfirm = () => {
+                setIsEditing(false);
+                // 親コンポーネントのnodesステートを更新
+                updateNodeText(id, editText);
+            };
+
+            // クリックハンドラ
+            const handleClick = (e) => {
+                // すでに編集モードなら何もしない
+                if (isEditing) return;
+                
+                // 編集モードを有効にする
+                setIsEditing(true);
+                // 次のレンダリング後にinputにフォーカスするためにsetTimeoutを使用
+                setTimeout(() => {
+                    if (inputRef.current) {
+                        inputRef.current.focus();
+                        inputRef.current.select();
+                    }
+                }, 0);
+                
+                // イベントの伝播を停止して、ドラッグが始まらないようにする
+                e.stopPropagation();
+            };
+
             return (
                 <>
                     {renderConnection()}
@@ -150,14 +185,44 @@
                             left: position.x,
                             top: position.y,
                             opacity: isDragging ? 0.5 : 1,
-                            cursor: 'grab'
+                            cursor: isEditing ? 'text' : 'grab'
                         }}
                         onMouseDown={(e) => {
-                            e.preventDefault();
-                            dragContext.startDrag(id, e, position);
+                            if (!isEditing) {
+                                e.preventDefault();
+                                dragContext.startDrag(id, e, position);
+                            }
                         }}
+                        onClick={handleClick}
                     >
-                        {text}
+                        {isEditing ? (
+                            <input
+                                ref={inputRef}
+                                type="text"
+                                value={editText}
+                                onChange={(e) => setEditText(e.target.value)}
+                                onBlur={handleTextConfirm}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        handleTextConfirm();
+                                    } else if (e.key === 'Escape') {
+                                        setIsEditing(false);
+                                        setEditText(text); // 編集をキャンセル
+                                    }
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                    width: '100%',
+                                    border: 'none',
+                                    background: 'transparent',
+                                    textAlign: 'center',
+                                    outline: 'none',
+                                    font: 'inherit'
+                                }}
+                            />
+                        ) : (
+                            text
+                        )}
                     </div>
                 </>
             );
@@ -193,6 +258,15 @@
                 setNodes(nodes.map(node => {
                     if (node.id === id) {
                         return { ...node, position: newPosition };
+                    }
+                    return node;
+                }));
+            };
+            
+            const updateNodeText = (id, newText) => {
+                setNodes(nodes.map(node => {
+                    if (node.id === id) {
+                        return { ...node, text: newText };
                     }
                     return node;
                 }));
@@ -287,6 +361,7 @@
                             onPositionChange={handleNodePositionChange}
                             getNodePosition={getNodePosition}
                             updateNodePosition={updateNodePosition}
+                            updateNodeText={updateNodeText}
                         />
                     ))}
                 </div>

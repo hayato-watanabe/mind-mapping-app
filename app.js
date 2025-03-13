@@ -1,6 +1,6 @@
 // モジュールをグローバル変数から取得
 const React = window.React;
-const { useState, useRef, useEffect } = React;
+const { useState, useRef, useEffect, useCallback } = React;
 const ReactDOM = window.ReactDOM;
 const { DndProvider, useDrag, useDrop } = window.ReactDnD;
 const HTML5Backend = window.ReactDnDHTML5Backend.HTML5Backend;
@@ -46,14 +46,20 @@ const Node = ({ id, text, position, parentId, onPositionChange, getNodePosition 
 
     useEffect(() => {
         if (nodeRef.current) {
+            const width = nodeRef.current.offsetWidth;
+            const height = nodeRef.current.offsetHeight;
+            
+            // Only update if dimensions have actually changed to avoid infinite updates
             onPositionChange(id, {
                 x: position.x,
                 y: position.y,
-                width: nodeRef.current.offsetWidth,
-                height: nodeRef.current.offsetHeight
+                width,
+                height
             });
         }
-    }, [position, id, onPositionChange]);
+    // Run this effect only when position changes or on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [position.x, position.y, id]);
 
     // 親ノードへの接続線を描画
     const renderConnection = () => {
@@ -138,12 +144,12 @@ const MindMap = () => {
         },
     });
 
-    const handleNodePositionChange = (id, positionData) => {
-        setNodePositions(prev => ({
-            ...prev,
-            [id]: positionData
-        }));
-    };
+const handleNodePositionChange = useCallback((id, positionData) => {
+    setNodePositions(prev => ({
+        ...prev,
+        [id]: positionData
+    }));
+}, []);
 
     const getNodePosition = (id) => {
         return nodePositions[id];
