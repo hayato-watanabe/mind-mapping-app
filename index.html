@@ -98,7 +98,7 @@
             );
         };
 
-        const Node = ({ id, text, position, parentId, onPositionChange, getNodePosition, updateNodePosition, updateNodeText }) => {
+        const Node = ({ id, text, position, parentId, onPositionChange, getNodePosition, updateNodePosition, updateNodeText, isSelected, onSelect }) => {
             const nodeRef = useRef(null);
             const dragContext = React.useContext(SimpleDragContext);
             const [isEditing, setIsEditing] = useState(false);
@@ -155,8 +155,8 @@
                 updateNodeText(id, editText);
             };
 
-            // クリックハンドラ
-            const handleClick = (e) => {
+            // ダブルクリックハンドラ（テキスト編集）
+            const handleDoubleClick = (e) => {
                 // すでに編集モードなら何もしない
                 if (isEditing) return;
                 
@@ -173,13 +173,21 @@
                 // イベントの伝播を停止して、ドラッグが始まらないようにする
                 e.stopPropagation();
             };
+            
+            // クリックハンドラ（ノード選択）
+            const handleClick = (e) => {
+                if (!isEditing) {
+                    onSelect(id);
+                    e.stopPropagation();
+                }
+            };
 
             return (
                 <>
                     {renderConnection()}
                     <div
                         ref={nodeRef}
-                        className="node"
+                        className={`node ${isSelected ? 'selected' : ''}`}
                         style={{
                             position: 'absolute',
                             left: position.x,
@@ -194,6 +202,7 @@
                             }
                         }}
                         onClick={handleClick}
+                        onDoubleClick={handleDoubleClick}
                     >
                         {isEditing ? (
                             <input
@@ -230,6 +239,7 @@
 
         const MindMap = () => {
             const canvasRef = useRef(null);
+            const [selectedNodeId, setSelectedNodeId] = useState(null);
             const [nodes, setNodes] = useState([
                 { id: 1, text: 'メインアイデア', position: { x: 400, y: 200 }, parentId: null },
                 { id: 2, text: 'サブアイデア 1', position: { x: 250, y: 300 }, parentId: 1 },
@@ -274,6 +284,15 @@
 
             const handleDragEnd = (draggedNode) => {
                 // 何もしない - マウスムーブですでに位置を更新している
+            };
+            
+            const handleNodeSelect = (id) => {
+                // 既に選択されているノードをクリックした場合は選択解除
+                if (selectedNodeId === id) {
+                    setSelectedNodeId(null);
+                } else {
+                    setSelectedNodeId(id);
+                }
             };
 
             const addNewNode = () => {
@@ -344,6 +363,7 @@
                 <div 
                     ref={canvasRef}
                     className="mind-map-canvas"
+                    onClick={() => setSelectedNodeId(null)} // キャンバスをクリックした時に選択を解除
                 >
                     <h1>マインドマップアプリ</h1>
                     <div className="controls">
@@ -362,6 +382,8 @@
                             getNodePosition={getNodePosition}
                             updateNodePosition={updateNodePosition}
                             updateNodeText={updateNodeText}
+                            isSelected={selectedNodeId === node.id}
+                            onSelect={handleNodeSelect}
                         />
                     ))}
                 </div>

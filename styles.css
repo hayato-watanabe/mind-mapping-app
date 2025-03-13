@@ -34,6 +34,12 @@ body {
     z-index: 10;
 }
 
+.node.selected {
+    box-shadow: 0 6px 14px rgba(128, 0, 255, 0.3);
+    transform: translateY(-3px);
+    border-color: rgba(128, 0, 255, 0.4);
+}
+
 .node:hover {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     transform: translateY(-2px);
